@@ -1,263 +1,742 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My heart to you</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orb Racer: F1 Timer & Interactive Camera</title>
+    <link href="https://fonts.cdnfonts.com/css/formula1" rel="stylesheet">
+    <style>
+        body {
+            margin: 0; padding: 0; overflow: hidden;
+            background-color: #111; font-family: 'Formula1', sans-serif;
+            color: white; user-select: none;
+        }
+        canvas { display: block; }
+        
+        /* UI Panels */
+        .ui-panel {
+            position: absolute; z-index: 10;
+            display: flex; flex-direction: column; gap: 8px;
+            background: rgba(20, 20, 20, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px; border-radius: 6px;
+            backdrop-filter: blur(4px);
+        }
+        
+        #ui-left { top: 20px; left: 20px; width: 180px; }
+        
+        #ui-top-center {
+            top: 20px; left: 50%; transform: translateX(-50%);
+            align-items: center; width: auto;
+        }
 
-<style>
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-}
+        #timerDisplay {
+            display: none;
+            font-size: 28px;
+            color: #ff3333;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 8px;
+            text-shadow: 0 0 10px rgba(255,50,50,0.5);
+        }
 
-body{
-    overflow:hidden;
-    background:#000;
-}
+        #ui-score { top: 20px; right: 20px; width: 220px; font-size: 14px; font-weight: bold; }
 
-canvas{
-    display:block;
-}
+        /* Victory Announcer Panel */
+        #victoryPanel {
+            display: none;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 15, 15, 0.95);
+            border: 2px solid white;
+            padding: 40px 60px;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 100;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+        }
+        #victoryTitle {
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 25px;
+            text-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
+        #btnRestartMatch {
+            font-size: 20px; padding: 12px 30px; 
+            background: white; color: black; font-weight: bold;
+            border-radius: 6px; border: none; transition: 0.2s;
+        }
+        #btnRestartMatch:hover { background: #ddd; transform: scale(1.05); }
 
-.title{
-    position:absolute;
-    top:20px;
-    width:100%;
-    text-align:center;
-    color:white;
-    font-family:Arial, sans-serif;
-    font-size:40px;
-    font-weight:bold;
-    font-style:italic;
-    z-index:10;
-}
+        button, select, input {
+            background: rgba(40, 40, 40, 0.8); color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 12px; cursor: pointer; border-radius: 4px;
+            font-family: 'Formula1', sans-serif; font-size: 13px; text-transform: uppercase;
+            outline: none; transition: all 0.2s; text-align: center;
+        }
+        button:hover, select:hover { background: rgba(80, 80, 80, 0.9); border-color: white; }
+        button:active { transform: scale(0.95); }
+        
+        /* Colors */
+        .txt-a { color: #00ff00; border-color: #00ff00; }
+        .txt-b { color: #ffff00; border-color: #ffff00; }
+        .txt-danger { color: #ff3333; border-color: #ff3333; }
+        .txt-race { background: #fff; color: #000; border-color: #fff; font-weight: bold; font-size: 14px;}
+        .txt-race:hover { background: #ccc; }
 
-.btn{
-    position:absolute;
-    bottom:30px;
-    left:50%;
-    transform:translateX(-50%);
-    padding:12px 20px;
-    font-size:16px;
-    font-weight:bold;
-    border:none;
-    border-radius:10px;
-    cursor:pointer;
-    background:#ff00cc;
-    color:white;
-    box-shadow:0 0 20px #ff00cc;
-    transition:0.3s;
-}
+        .leader-item {
+            padding: 6px; border-radius: 4px; transition: background 0.2s; cursor: pointer;
+            display: flex; justify-content: space-between; border: 1px solid transparent;
+        }
+        .leader-item:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); }
 
-.btn:hover{
-    transform:translateX(-50%) scale(1.1);
-}
-</style>
+        /* Custom Scrollbar for Finishers List */
+        #finishersList::-webkit-scrollbar { width: 6px; }
+        #finishersList::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        #finishersList::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+
+        .controls-hint {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(49, 49, 49, 0.7); padding: 8px 16px; border-radius: 41px;
+            pointer-events: none; opacity: 0.8; font-size: 14px; letter-spacing: 1px; text-align: center;
+        }
+    </style>
 </head>
-
 <body>
 
-<div class="title">Love uuuu</div>
+    <div id="victoryPanel">
+        <div id="victoryTitle">RACE OVER</div>
+        <button id="btnRestartMatch">RESTART RACE</button>
+    </div>
 
-<canvas id="canvas"></canvas>
+    <div id="ui-left" class="ui-panel">
+        <button id="btnSpawnA" class="txt-a">Spawn Group A</button>
+        <button id="btnSpawnB" class="txt-b">Spawn Group B</button>
+        <input type="number" id="countOrbs" value="20" min="1" max="150" placeholder="Orbs per group">
+        <hr style="width:100%; border-color:#333; margin: 2px 0;">
+        <button id="btnStartRace" class="txt-race">🏁 START RACE 🏁</button>
+    </div>
 
-<button class="btn" onclick="magic()">click this to see magic happen</button>
+    <div id="ui-top-center" class="ui-panel">
+        <div id="timerDisplay">30.00s</div>
+        <div style="display: flex; gap: 8px; flex-direction: row;">
+            <button id="btnZoomOut">Zoom -</button>
+            <button id="btnZoomIn">Zoom +</button>
+            <button id="btnFollow">Camera Follow: OFF</button>
+            <button id="btnToggleBox" style="color: #00e5ff;">Toggle Boxes</button>
+            <button id="btnKillAll" class="txt-danger">Kill All Active</button>
+        </div>
+    </div>
 
-<script>
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+    <div id="ui-score" class="ui-panel">
+        <div style="text-align: center; border-bottom: 1px solid #555; padding-bottom: 5px; margin-bottom: 5px;">GLOBAL SCORE</div>
+        <div class="txt-a">GROUP A: <span id="scoreA">0</span></div>
+        <div class="txt-b">GROUP B: <span id="scoreB">0</span></div>
+        
+        <div style="margin-top: 15px; text-align: center; border-bottom: 1px solid #555; padding-bottom: 5px; margin-bottom: 5px; color: #ccc;">LIVE LEADERS</div>
+        <div id="leaderboardList" style="font-weight: normal;">
+            </div>
 
-let zigzagSpeed = 0.7;
+        <div style="margin-top: 15px; text-align: center; border-bottom: 1px solid #555; padding-bottom: 5px; margin-bottom: 5px; color: #ccc;">TIME RECORD</div>
+        <div id="finishersList" style="font-weight: normal; font-size: 13px; max-height: 150px; overflow-y: auto;">
+            <div style='color:#777; font-size: 12px; text-align:center;'>No finishers yet</div>
+        </div>
+    </div>
 
-function magic(){
-    const btn = document.querySelector(".btn");
+    <div class="controls-hint">
+        <b>W A S D</b> or <b>Click & Drag</b> to Pan<br>
+        <b>Scroll Wheel</b> to Zoom | <b>Click Orb/Name</b> to Follow
+    </div>
 
-    if(zigzagSpeed === 0.7){
-        zigzagSpeed = 1.5;
-        btn.innerText = "slow motion 💗";
-    } else {
-        zigzagSpeed = 0.7;
-        btn.innerText = "speed up ✨";
-    }
-}
+    <canvas id="canvas"></canvas>
 
-function resize(){
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener("resize", () => {
-    resize();
-    generateHeart();
-    createParticles();
-});
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
 
-const particles = [];
-const heartPoints = [];
+        let particles = [];
+        let orbIdCounter = 0; 
+        
+        const zigzagSpeed = 0.6; 
+        const trackRadius = 90; 
+        let boxOpacity = 1.0;
+        
+        let scoreA = 0;
+        let scoreB = 0;
 
-/* ⭐ FIXED SPAWN POINT (DOT) */
-const spawnPoint = {
-    x: 0,
-    y: 0
-};
+        // F1 Race Timer State
+        let raceActive = false;
+        let raceStartTime = 0;
+        let raceFinishCountdown = null;
+        const countdownDuration = 30; // 30 seconds to finish once the 1st orb scores
+        let finishedRecords = []; // Holds data for the Time Record list
 
-function heartShape(t){
-    return {
-        x: 16 * Math.pow(Math.sin(t),3),
-        y: -(13 * Math.cos(t)
-            - 5 * Math.cos(2*t)
-            - 2 * Math.cos(3*t)
-            - Math.cos(4*t))
-    };
-}
+        // --- CAMERA SYSTEM ---
+        const camera = { x: -100, y: 100, zoom: 0.6, targetOrb: null };
+        const keys = { w: false, a: false, s: false, d: false };
+        let isDragging = false;
+        let dragStartX, dragStartY;
+        let dragDist = 0; // Used to differentiate a drag from a click
 
-function generateHeart(){
-    heartPoints.length = 0;
+        // Key Listeners
+        window.addEventListener('keydown', e => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', e => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
 
-    const scale = Math.min(canvas.width, canvas.height) * 0.015;
-
-    for(let t=0; t<Math.PI*2; t+=0.008){
-        const p = heartShape(t);
-
-        heartPoints.push({
-            x: canvas.width/2 + p.x * scale,
-            y: canvas.height/2 + p.y * scale
+        // Mouse Controls
+        canvas.addEventListener('mousedown', e => {
+            isDragging = true;
+            dragDist = 0;
+            dragStartX = e.clientX; dragStartY = e.clientY;
         });
-    }
+        window.addEventListener('mousemove', e => {
+            if (isDragging) {
+                dragDist += Math.abs(e.clientX - dragStartX) + Math.abs(e.clientY - dragStartY);
+                camera.x -= (e.clientX - dragStartX) / camera.zoom;
+                camera.y -= (e.clientY - dragStartY) / camera.zoom;
+                dragStartX = e.clientX; dragStartY = e.clientY;
+                document.getElementById('btnFollow').innerText = "Camera Follow: OFF";
+                camera.targetOrb = null; 
+            }
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
 
-    /* place spawn dot at bottom center */
-    spawnPoint.x = canvas.width / 2;
-    spawnPoint.y = canvas.height - 30;
-}
+        // Click Orb to Follow
+        canvas.addEventListener('click', e => {
+            if (dragDist > 10) return; // Ignore if the user was just dragging the camera
 
-/* spawn from the dot */
-function spawnFromDot(){
-    return {
-        x: spawnPoint.x,
-        y: spawnPoint.y
-    };
-}
+            const worldX = (e.clientX / camera.zoom) + camera.x;
+            const worldY = (e.clientY / camera.zoom) + camera.y;
 
-class Particle{
-    constructor(target){
+            let clickedOrb = null;
+            let minDist = Infinity;
 
-        const spawn = spawnFromDot();
+            particles.forEach(p => {
+                if (p.dead) return;
+                let dist = Math.hypot(p.x - worldX, p.y - worldY);
+                // 30px interaction radius
+                if (dist < 30 && dist < minDist) {
+                    minDist = dist;
+                    clickedOrb = p;
+                }
+            });
 
-        this.x = spawn.x;
-        this.y = spawn.y;
+            if (clickedOrb) {
+                window.followOrb(clickedOrb.id);
+            }
+        });
 
-        this.tx = target.x;
-        this.ty = target.y;
+        // Mouse Scroll Zooming
+        canvas.addEventListener('wheel', e => {
+            const mouseX = e.clientX; const mouseY = e.clientY;
+            const worldX = (mouseX / camera.zoom) + camera.x;
+            const worldY = (mouseY / camera.zoom) + camera.y;
 
-        this.size = Math.random() * 2 + 0.5;
+            const zoomFactor = 1.1;
+            if (e.deltaY < 0) camera.zoom *= zoomFactor; 
+            else camera.zoom /= zoomFactor; 
+            
+            camera.zoom = Math.max(0.15, Math.min(4, camera.zoom));
 
-        this.vx = (Math.random()-12) * 2;
-        this.vy = -Math.random() * 2;
+            camera.x = worldX - (mouseX / camera.zoom);
+            camera.y = worldY - (mouseY / camera.zoom);
+        });
 
-        this.life = Math.random() * 100;
-    }
+        // --- NETWORK GRAPH SYSTEM (The Maze) ---
+        const nodes = {
+            'start': { x: 100, y: 500, neighbors: ['n1'] },
+            'n1': { x: 700, y: 500, neighbors: ['start', 'n2', 'n3', 'n4'] },
+            
+            'n2': { x: 700, y: 150, neighbors: ['n1', 'n5'] },
+            'n5': { x: 1500, y: 150, neighbors: ['n2', 'n7'] },
+            
+            'n4': { x: 1500, y: 500, neighbors: ['n1', 'n7', 'trap1'] },
+            'trap1': { x: 1500, y: 300, neighbors: ['n4'] }, 
+            
+            'n3': { x: 700, y: 850, neighbors: ['n1', 'trap2'] },
+            'trap2': { x: 1100, y: 850, neighbors: ['n3'] },
 
-    update(){
-        this.life += 0.03;
+            'n7': { x: 2000, y: 500, neighbors: ['n5', 'n4', 'n8', 'trap3'] },
+            
+            'trap3': { x: 2000, y: 150, neighbors: ['n7'] }, 
+            'n8': { x: 2500, y: 500, neighbors: ['n7', 'n9'] },
+            'n9': { x: 2500, y: 800, neighbors: ['n8', 'finish'] },
+            'finish': { x: 3200, y: 800, neighbors: ['n9'] }
+        };
 
-        this.vx += (Math.random()-0.5) * zigzagSpeed;
-        this.vy += (Math.random()-0.5) * zigzagSpeed;
+        const edges = [];
+        const seenEdges = new Set();
+        for (let id in nodes) {
+            nodes[id].neighbors.forEach(nId => {
+                let edgeHash = [id, nId].sort().join('-');
+                if (!seenEdges.has(edgeHash)) {
+                    seenEdges.add(edgeHash);
+                    edges.push({ a: nodes[id], b: nodes[nId] });
+                }
+            });
+        }
 
-        this.vx += (this.tx - this.x) * 0.0012;
-        this.vy += (this.ty - this.y) * 0.0012;
+        // --- OBSTACLES ---
+        const obstacles = [
+            { x: 700, y: 325, r: 2 },  
+            { x: 1100, y: 150, r: 3 }, 
+            { x: 1100, y: 500, r: 3 }, 
+            { x: 1500, y: 300, r: 4 }, 
+            { x: 1100, y: 850, r: 5 }, 
+            { x: 2000, y: 325, r: 2 }, 
+            { x: 2250, y: 500, r: 3 }, 
+            { x: 2500, y: 650, r: 3 }  
+        ];
 
-        this.vx *= 0.96;
-        this.vy *= 0.96;
+        function getClosestPointOnSegment(p, a, b) {
+            let atob = { x: b.x - a.x, y: b.y - a.y };
+            let atop = { x: p.x - a.x, y: p.y - a.y };
+            let lenSq = atob.x*atob.x + atob.y*atob.y;
+            if(lenSq === 0) return a;
+            let t = Math.min(1, Math.max(0, (atop.x*atob.x + atop.y*atob.y) / lenSq));
+            return { x: a.x + atob.x * t, y: a.y + atob.y * t };
+        }
 
-        this.x += this.vx;
-        this.y += this.vy;
-    }
+        class Particle {
+            constructor(startX, startY, groupLabel, boxColor) {
+                this.id = orbIdCounter++;
+                this.x = startX + (Math.random() - 0.5) * 40;
+                this.y = startY + (Math.random() - 0.5) * 40;
+                this.size = Math.random() * 2 + 2;
+                
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
 
-    draw(){
-        const glow = 10 + Math.sin(this.life) * 8;
+                this.life = Math.random() * 100;
+                this.color = '#ffffff'; 
+                this.boxColor = boxColor; 
+                this.groupLabel = groupLabel;
+                
+                this.history = [];
+                this.maxHistory = 35;
+                this.boxSize = Math.random() * 10 + 25; 
 
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+                this.prevNodeId = 'start';
+                this.targetNodeId = 'n1';
+                
+                this.dead = false; 
+            }
 
-        ctx.fillStyle = "#ffffff";
-        ctx.shadowBlur = glow;
-        ctx.shadowColor = "#aaaaaa";
+            update() {
+                if (this.dead) return;
+                this.life += 0.05;
 
-        ctx.fill();
-    }
-}
+                // --- FINISH HOLE LOGIC (Checked First) ---
+                const finishNode = nodes['finish'];
+                let distToFinish = Math.hypot(this.x - finishNode.x, this.y - finishNode.y);
+                
+                // Increased detection radius from 40 to 70 so they don't overshoot it
+                if (distToFinish < 70) {
+                    this.dead = true;
+                    if (this.groupLabel === 'group A') scoreA++;
+                    if (this.groupLabel === 'group B') scoreB++;
+                    updateScoreUI();
+                    
+                    // Log Finish Time in Seconds
+                    let finishTime = raceActive ? ((Date.now() - raceStartTime) / 1000).toFixed(2) : "0.00";
+                    finishedRecords.push({
+                        id: this.id,
+                        groupLabel: this.groupLabel,
+                        color: this.boxColor,
+                        time: finishTime
+                    });
+                    updateFinishersUI();
 
-function createParticles(){
-    particles.length = 0;
+                    // Trigger Countdown Timer if first orb
+                    if (raceActive && raceFinishCountdown === null) {
+                        raceFinishCountdown = Date.now() + (countdownDuration * 1000);
+                        document.getElementById('timerDisplay').style.display = 'block';
+                    }
+                    return;
+                }
 
-    for(let i=0; i<heartPoints.length; i++){
-        particles.push(new Particle(heartPoints[i]));
-    }
-}
+                let targetWP = nodes[this.targetNodeId];
+                let prevWP = nodes[this.prevNodeId];
 
-generateHeart();
-createParticles();
+                // Check if reached intersection node
+                let distToWP = Math.hypot(this.x - targetWP.x, this.y - targetWP.y);
+                
+                // Skip reassigning if the target is the finish hole
+                if (distToWP < trackRadius * 0.6 && this.targetNodeId !== 'finish') {
+                    let options = targetWP.neighbors.filter(n => n !== this.prevNodeId);
+                    
+                    if (options.length === 0) {
+                        options = [this.prevNodeId];
+                    }
+                    
+                    let nextId = options[Math.floor(Math.random() * options.length)];
+                    this.prevNodeId = this.targetNodeId;
+                    this.targetNodeId = nextId;
+                    
+                    targetWP = nodes[this.targetNodeId];
+                    prevWP = nodes[this.prevNodeId];
+                }
 
-/* draw spawn dot */
-function drawSpawnDot(){
-    ctx.beginPath();
-    ctx.arc(spawnPoint.x, spawnPoint.y, 6, 0, Math.PI*2);
-    ctx.fillStyle = "#ff00cc";
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = "#ff00cc";
-    ctx.fill();
-}
+                // --- OBSTACLE KILL ZONES ---
+                for (let obs of obstacles) {
+                    if (Math.hypot(this.x - obs.x, this.y - obs.y) < obs.r + this.size) {
+                        this.dead = true; 
+                        return;
+                    }
+                }
 
-/* background lines */
-const lines = [];
+                // --- DYNAMIC TRACK CONTAINMENT ---
+                let closestPoint = getClosestPointOnSegment(this, prevWP, targetWP);
+                let distFromCenterSq = (this.x - closestPoint.x)**2 + (this.y - closestPoint.y)**2;
+                let maxAllowedDist = trackRadius - 15; 
+                
+                if (distFromCenterSq > maxAllowedDist**2) {
+                    let dist = Math.sqrt(distFromCenterSq);
+                    let nx = (closestPoint.x - this.x) / dist;
+                    let ny = (closestPoint.y - this.y) / dist;
+                    this.vx += nx * 1.5; 
+                    this.vy += ny * 1.5;
+                }
+                
+                this.vx += (targetWP.x - this.x) * 0.0003;
+                this.vy += (targetWP.y - this.y) * 0.0003;
 
-for(let i=0;i<40;i++){
-    lines.push({
-        x1: Math.random()*canvas.width,
-        y1: Math.random()*canvas.height,
-        x2: Math.random()*canvas.width,
-        y2: Math.random()*canvas.height,
-        vx: (Math.random()-0.5)*0.3,
-        vy: (Math.random()-0.5)*0.3
-    });
-}
+                this.vx += (Math.random() - 0.5) * zigzagSpeed;
+                this.vy += (Math.random() - 0.5) * zigzagSpeed;
 
-function drawLines(){
-    ctx.strokeStyle = "rgba(100,100,255,0.08)";
-    ctx.lineWidth = 1;
+                this.vx *= 0.92; this.vy *= 0.92; 
 
-    lines.forEach(line=>{
-        line.x1 += line.vx;
-        line.y1 += line.vy;
-        line.x2 -= line.vx;
-        line.y2 -= line.vy;
+                this.x += this.vx; this.y += this.vy;
 
-        ctx.beginPath();
-        ctx.moveTo(line.x1, line.y1);
-        ctx.lineTo(line.x2, line.y2);
-        ctx.stroke();
-    });
-}
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > this.maxHistory) this.history.shift();
+            }
 
-function animate(){
-    ctx.fillStyle = "rgba(0,0,0,0.12)";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+            draw() {
+                if (this.dead) return;
+                const glow = Math.max(0, 1 + Math.sin(this.life) * 8);
 
-    drawLines();
-    drawSpawnDot(); // ⭐ DOT ALWAYS VISIBLE
+                if (this.history.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.history[0].x, this.history[0].y);
+                    for (let i = 1; i < this.history.length; i++) {
+                        ctx.lineTo(this.history[i].x, this.history[i].y);
+                    }
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = this.size * 0.2; 
+                    ctx.lineJoin = "round"; ctx.lineCap = "round";
+                    ctx.shadowBlur = glow; ctx.shadowColor = this.color;
+                    ctx.stroke();
+                }
 
-    particles.forEach(p=>{
-        p.update();
-        p.draw();
-    });
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = glow + 5; ctx.shadowColor = this.color; 
+                ctx.fill();
+                ctx.shadowBlur = 0; 
 
-    requestAnimationFrame(animate);
-}
+                if (boxOpacity > 0) {
+                    ctx.globalAlpha = boxOpacity;
+                    const bx = this.x - this.boxSize / 2;
+                    const by = this.y - this.boxSize / 2;
 
-animate();
-</script>
+                    ctx.strokeStyle = this.boxColor;
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(bx, by, this.boxSize, this.boxSize);
 
+                    ctx.font = "bold 10px 'Formula1', sans-serif";
+                    const textWidth = ctx.measureText(this.groupLabel).width;
+                    
+                    ctx.fillStyle = this.boxColor;
+                    ctx.fillRect(bx - 1, by - 14, textWidth + 8, 14);
+
+                    ctx.fillStyle = '#000000';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.groupLabel, bx + 3, by - 7);
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+        }
+
+        // --- DRAW ENVIRONMENT ---
+        function drawTrack() {
+            // Draw Game Title directly into the world under the track
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+            ctx.font = "bold 400px 'Formula1', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText("SPERM RACE", 1650, 1200); 
+            ctx.textAlign = 'left'; // Reset
+            ctx.textBaseline = 'alphabetic'; // Reset
+
+            ctx.lineWidth = trackRadius * 2;
+            ctx.lineJoin = "round";
+            ctx.lineCap = "round";
+            ctx.strokeStyle = 'rgba(30, 30, 30, 0.6)';
+            
+            ctx.beginPath();
+            edges.forEach(edge => {
+                ctx.moveTo(edge.a.x, edge.a.y);
+                ctx.lineTo(edge.b.x, edge.b.y);
+            });
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(nodes['start'].x, nodes['start'].y, trackRadius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+            ctx.fill();
+
+            for(let obs of obstacles) {
+                ctx.beginPath();
+                ctx.arc(obs.x, obs.y, obs.r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                ctx.fill();
+                
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ff0000';
+                ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            const finish = nodes['finish'];
+            ctx.beginPath();
+            ctx.arc(finish.x, finish.y, 40, 0, Math.PI * 2);
+            ctx.fillStyle = '#000';
+            ctx.fill();
+            
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#ffffff';
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = "bold 20px 'Formula1', sans-serif";
+            ctx.fillText("FINISH", finish.x - 35, finish.y - 60);
+        }
+
+        function updateScoreUI() {
+            document.getElementById('scoreA').innerText = scoreA;
+            document.getElementById('scoreB').innerText = scoreB;
+        }
+
+        function updateFinishersUI() {
+            let html = '';
+            finishedRecords.forEach((record, i) => {
+                // Clicking a finished orb snaps to the hole where it died
+                html += `<div class="leader-item" onclick="window.followOrb(${record.id}, true)" style="color:${record.color};">
+                    <span>${i+1}. ${record.groupLabel}</span>
+                    <span>${record.time}s</span>
+                </div>`;
+            });
+            if(finishedRecords.length === 0) html = "<div style='color:#777; font-size: 12px; text-align:center;'>No finishers yet</div>";
+            document.getElementById('finishersList').innerHTML = html;
+        }
+
+        // Global function called by UI clicks
+        window.followOrb = function(id, isFinished = false) {
+            if (isFinished) {
+                // Since the orb is dead, snap camera to the finish hole where it landed
+                camera.targetOrb = { x: nodes['finish'].x, y: nodes['finish'].y, dead: false, isStatic: true };
+                document.getElementById('btnFollow').innerText = "Camera: FINISH LINE";
+            } else {
+                let orb = particles.find(p => p.id === id);
+                if(orb && !orb.dead) {
+                    camera.targetOrb = orb;
+                    document.getElementById('btnFollow').innerText = "Camera Follow: ON";
+                }
+            }
+        };
+
+        let frameCount = 0;
+        function updateCameraAndUI() {
+            frameCount++;
+
+            // Timer Logic & Victory Announcer
+            if (raceFinishCountdown !== null && raceActive) {
+                let timeLeft = (raceFinishCountdown - Date.now()) / 1000;
+                let timerDisplay = document.getElementById('timerDisplay');
+                
+                if (timeLeft <= 0) {
+                    timerDisplay.innerText = "RACE OVER";
+                    raceActive = false;
+                    raceFinishCountdown = null;
+                    particles = []; // End race immediately by destroying active orbs
+                    
+                    // Show Victory Panel
+                    let victoryPanel = document.getElementById('victoryPanel');
+                    let victoryTitle = document.getElementById('victoryTitle');
+                    if (scoreA > scoreB) {
+                        victoryTitle.innerHTML = "<span class='txt-a'>GROUP A WINS!</span>";
+                    } else if (scoreB > scoreA) {
+                        victoryTitle.innerHTML = "<span class='txt-b'>GROUP B WINS!</span>";
+                    } else {
+                        victoryTitle.innerHTML = "<span style='color:white;'>IT'S A TIE!</span>";
+                    }
+                    victoryPanel.style.display = 'block';
+
+                } else {
+                    timerDisplay.innerText = timeLeft.toFixed(2) + "s";
+                }
+            }
+
+            // Camera follow logic
+            if (camera.targetOrb && !camera.targetOrb.dead) {
+                const targetCamX = camera.targetOrb.x - (canvas.width / 2) / camera.zoom;
+                const targetCamY = camera.targetOrb.y - (canvas.height / 2) / camera.zoom;
+                camera.x += (targetCamX - camera.x) * 0.1;
+                camera.y += (targetCamY - camera.y) * 0.1;
+            } else {
+                camera.targetOrb = null;
+                document.getElementById('btnFollow').innerText = "Camera Follow: OFF";
+                const speed = 15 / camera.zoom;
+                if (keys.w) camera.y -= speed;
+                if (keys.s) camera.y += speed;
+                if (keys.a) camera.x -= speed;
+                if (keys.d) camera.x += speed;
+            }
+
+            // Throttle Leaderboard updates to save performance (every 15 frames)
+            if (frameCount % 15 === 0) {
+                let activeOrbs = particles.filter(p => !p.dead);
+                
+                activeOrbs.sort((a, b) => {
+                    let distA = Math.hypot(a.x - nodes['finish'].x, a.y - nodes['finish'].y);
+                    let distB = Math.hypot(b.x - nodes['finish'].x, b.y - nodes['finish'].y);
+                    return distA - distB;
+                });
+                
+                let top5 = activeOrbs.slice(0, 5);
+                let html = '';
+                top5.forEach((orb, i) => {
+                    let distText = Math.round(Math.hypot(orb.x - nodes['finish'].x, orb.y - nodes['finish'].y) / 10);
+                    // Clicking live leaders passes false for isFinished
+                    html += `<div class="leader-item" onclick="window.followOrb(${orb.id}, false)" style="color:${orb.boxColor};">
+                        <span>#${i+1} ${orb.groupLabel}</span>
+                        <span>${distText}m</span>
+                    </div>`;
+                });
+                if(activeOrbs.length === 0 && finishedRecords.length === 0) {
+                    html = "<div style='color:#777; font-size: 12px; text-align:center;'>No active orbs</div>";
+                } else if (activeOrbs.length === 0) {
+                    html = "<div style='color:#777; font-size: 12px; text-align:center;'>Race Concluded</div>";
+                }
+                document.getElementById('leaderboardList').innerHTML = html;
+            }
+        }
+
+        // --- UI BUTTON LISTENERS ---
+        function spawnA() {
+            let count = parseInt(document.getElementById('countOrbs').value) || 20;
+            for (let i = 0; i < count; i++) particles.push(new Particle(nodes['start'].x, nodes['start'].y, 'group A', '#00ff00'));
+        }
+        function spawnB() {
+            let count = parseInt(document.getElementById('countOrbs').value) || 20;
+            for (let i = 0; i < count; i++) particles.push(new Particle(nodes['start'].x, nodes['start'].y, 'group B', '#ffff00'));
+        }
+
+        document.getElementById('btnSpawnA').addEventListener('click', spawnA);
+        document.getElementById('btnSpawnB').addEventListener('click', spawnB);
+
+        document.getElementById('btnStartRace').addEventListener('click', () => {
+            // Hide Victory Screen if active
+            document.getElementById('victoryPanel').style.display = 'none';
+
+            // Reset state
+            scoreA = 0; scoreB = 0;
+            updateScoreUI();
+            
+            raceActive = true;
+            raceStartTime = Date.now();
+            raceFinishCountdown = null;
+            finishedRecords = [];
+            updateFinishersUI();
+            
+            document.getElementById('timerDisplay').style.display = 'none';
+
+            camera.x = nodes['start'].x - (canvas.width / 2) / camera.zoom;
+            camera.y = nodes['start'].y - (canvas.height / 2) / camera.zoom;
+            
+            particles = []; // Clear existing orbs
+            spawnA(); 
+            spawnB();
+        });
+
+        // Restart Match hooks directly into Start Race logic
+        document.getElementById('btnRestartMatch').addEventListener('click', () => {
+            document.getElementById('btnStartRace').click();
+        });
+
+        document.getElementById('btnKillAll').addEventListener('click', () => {
+            document.getElementById('victoryPanel').style.display = 'none';
+            particles = []; 
+            camera.targetOrb = null;
+            finishedRecords = [];
+            updateFinishersUI();
+        });
+
+        document.getElementById('btnToggleBox').addEventListener('click', () => {
+            boxOpacity = boxOpacity === 1.0 ? 0.0 : 1.0;
+        });
+
+        document.getElementById('btnZoomIn').addEventListener('click', () => { 
+            camera.zoom = Math.min(4, camera.zoom + 0.2); 
+        });
+        
+        document.getElementById('btnZoomOut').addEventListener('click', () => { 
+            camera.zoom = Math.max(0.15, camera.zoom - 0.2); 
+        });
+
+        document.getElementById('btnFollow').addEventListener('click', (e) => {
+            if (camera.targetOrb) {
+                camera.targetOrb = null;
+                e.target.innerText = "Camera Follow: OFF";
+            } else {
+                let activeOrbs = particles.filter(p => !p.dead);
+                if(activeOrbs.length > 0) {
+                    camera.targetOrb = activeOrbs[Math.floor(Math.random() * activeOrbs.length)];
+                    e.target.innerText = "Camera Follow: ON";
+                }
+            }
+        });
+
+        // --- MAIN LOOP ---
+        function animate() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            updateCameraAndUI();
+
+            ctx.save();
+            ctx.scale(camera.zoom, camera.zoom);
+            ctx.translate(-camera.x, -camera.y);
+
+            drawTrack();
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.update();
+                p.draw();
+                if (p.dead) particles.splice(i, 1);
+            }
+
+            ctx.restore();
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
 </body>
 </html>
